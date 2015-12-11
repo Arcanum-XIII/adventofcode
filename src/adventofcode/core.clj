@@ -1,5 +1,5 @@
 (ns adventofcode.core
-  (:require [clojure.string :refer [split]]
+  (:require [clojure.string :refer [split split-lines]]
             [clj-message-digest.core :refer :all])) ;; needed for the day 4
 
 ;; brutish approach ! Give the function the string and you'll get the answer. Since we're using a lisp, we'll never know the cost of memory it's gonna use... But the call stack should be good since we're using recur. 
@@ -124,8 +124,48 @@
 
 ;; to find the solution : (count (filter true?  (map d5-test-string (split (slurp "d5-input.txt") #"\n")))
 
-(defn d5-create-groups 
+(defn d5-create-pairs 
+  "Given a string, will build a series of overlapping pair so 'aeb' will return [['ae] ['eb']]"
   [text]
-  (loop [text text result [] index 0]
-    (if (empty? text) result
-        (recur (rest text) (conj result [index (take 2 text)]) (inc index)))))
+  (loop [t text result []]
+    (cond (or (= 1 (count t)) (empty? t)) result
+          :default (recur (subs t 1) (conj result (subs t 0 2))))))
+
+(defn d5-find-duplicate-pair 
+  "Brute force, no memoization and no shortcut !"
+  [double]
+  (loop [v (rest double) filter-val (first double) r #{}]
+    (let [duplicates (filter #(= (nth filter-val 1) (nth % 1)) v)]
+      (cond (empty? v) r 
+            :default (recur (rest v) (first v) (if (not (empty? duplicates)) (apply conj r (conj duplicates filter-val)) r))
+))))
+
+(defn d5-validate-pair 
+  "How to know if pairs are next to each other or not ? By using a simple substraction (far index to nearer index), and if the result is equal to one, they're next to each other. Of course we can't use a base 0 index for that (- 0 is not substracting anything after all)"
+  [pair]
+  (cond (let [[one two] (nth (first pair) 1)] (not= one two)) true 
+        (not= 1 (reduce - (map inc (map first (reverse (sort-by first pair)))))) true
+        :default false))
+
+(defn d5-check-pairs 
+  [text]
+  (if (not (empty? (filter true? (map #(d5-validate-pair (second %)) (group-by second (d5-find-duplicate-pair (keep-indexed #(vector %1 %2) (d5-create-pairs text)))))))) true false))
+
+(defn d5-validate-triplets 
+  [triplet]
+  (= (get triplet 0) (get triplet 2)))
+
+(defn d5-check-triplets 
+  [text]
+  (loop [t text]
+    (if (empty? t) false
+        (let [v (if (= (count t) 3) t
+                    (subs t 0 3))]
+          (cond (d5-validate-triplets v) true
+                (= (count t) 3) false
+                :default (recur (subs t 1)))))))
+
+;; took me too long to figure it, and I have the feeling it could be improved (memoization and some shortcuts)
+(defn d5-second-test 
+  [text]
+  (and (d5-check-pairs text) (d5-check-triplets text)))
