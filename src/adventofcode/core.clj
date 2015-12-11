@@ -1,6 +1,7 @@
 (ns adventofcode.core
   (:require [clojure.string :refer [split split-lines]]
-            [clj-message-digest.core :refer :all])) ;; needed for the day 4
+            [clj-message-digest.core :refer :all]
+            [instaparse.core :as insta])) ;; needed for the day 4
 
 ;; brutish approach ! Give the function the string and you'll get the answer. Since we're using a lisp, we'll never know the cost of memory it's gonna use... But the call stack should be good since we're using recur. 
 
@@ -169,3 +170,74 @@
 (defn d5-second-test 
   [text]
   (and (d5-check-pairs text) (d5-check-triplets text)))
+
+
+;; Day 6 !
+
+(defn d6-gen-init-vec 
+  "Big improvement to readability : understanding threading macro. Generate an off grid (squared one)"
+  [limit]
+  (->> 0
+       repeat
+       (take limit)
+       (into [])
+       repeat
+       (take limit)
+       (into [])))
+
+(def d6-instruction-parser
+  "Insta parser magic : far easier to extract purposeful instruction from the text one. Like a parser should."
+  (insta/parser
+   "instructions = instruction startx starty endx endy 
+    instruction = 'turn on' | 'turn off' | 'toggle'
+    startx = <[' ']>#'[0-9]*'
+    starty = <[',']>#'[0-9]*'
+    endx = <[' through ']>#'[0-9]*'
+    endy = <[',']>#'[0-9]*'"))
+
+(defn d6-clean-instruction
+  "Transform the result of an d6-instruction-parser into a 'cleaner' map. Eye of the beholder and so on."
+  [instruction]
+  (let [instruction (into {} (rest instruction))]
+    (apply conj  {:instruction (cond (= "turn off" (:instruction instruction)) :off
+                                     (= "turn on" (:instruction instruction)) :on
+                                     :default :toggle)}
+           (->> instruction
+                rest
+                (map (fn [[k v]] [k (read-string v)]))
+                (into {})))))
+
+(defn d6-action 
+  "Return a function, depending of what Santa ordered."
+  [instruction]
+  (cond (= instruction :toggle) #(if (= % 0) 1 0)
+        (= instruction :off) (fn [_] 0)
+        :default (fn [_] 1)))
+
+(defn d6-action-part2
+  "Return a function, depending of what Santa ordered."
+  [instruction]
+  (cond (= instruction :toggle) #(+ 2 %)
+        (= instruction :off) #(if (= % 0) 0 (- % 1))
+        :default #(+ 1 %)))
+
+(defn d6-change-vec
+  "Apply a function to a range of index (inclusively) from a vector"
+  [from to source limit f]
+  (let [to (inc to)
+        start (subvec source 0 from) 
+        tochange (subvec source from to) 
+        end (subvec source to limit)]
+    (apply conj (apply conj start (map f tochange)) end)))
+
+(defn d6-apply-instruction
+  [instruction grid size chooser]
+  (d6-change-vec (:starty instruction) (:endy instruction) grid size
+                 #(d6-change-vec (:startx instruction) (:endx instruction) % size (chooser (:instruction instruction)))))
+
+(defn d6-transform-grid [list grid chooser]
+  (loop [grid grid list list]
+    (if (empty? list) grid
+        (recur (d6-apply-instruction (d6-clean-instruction (d6-instruction-parser (first list))) grid (count (first grid)) chooser) (rest list)))))
+
+;; part 1 solution : (reduce + (map (fn [i] (reduce + i)) (d6-transform-grid (split-lines (slurp "d6-input.txt")) (d6-gen-init-vec 1000))))
