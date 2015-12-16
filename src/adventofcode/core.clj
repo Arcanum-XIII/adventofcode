@@ -241,3 +241,49 @@
         (recur (d6-apply-instruction (d6-clean-instruction (d6-instruction-parser (first list))) grid (count (first grid)) chooser) (rest list)))))
 
 ;; part 1 solution : (reduce + (map (fn [i] (reduce + i)) (d6-transform-grid (split-lines (slurp "d6-input.txt")) (d6-gen-init-vec 1000))))
+
+;; day 7 - gonna be fun !
+
+(def d7-instruction-parser 
+  (insta/parser
+    "<sentence> = instruction <whitespace> assign
+     instruction = token? <whitespace>? method? <whitespace>? token? 
+     method = 'AND' | 'OR' | 'LSHIFT' | 'RSHIFT' | 'NOT'  
+     <token> = var | value
+     whitespace = #'\\s+'
+     var = #'[a-z]+'
+     value = #'[0-9]+'
+     assign = <'-> '>#'[a-z]*'"))
+
+(def d7-instruction-list { nil identity
+                          "AND" bit-and  
+                          "OR" bit-or 
+                          "LSHIFT" bit-shift-left
+                          "RSHIFT" bit-shift-right
+                          "NOT" bit-not})
+
+(defn d7-get-val 
+  [[t v] register]
+  (if (= t :var) (get register v)
+      (read-string v)))
+
+(defn d7-exec-instruction 
+  "For a given stack/register, execute instruction if all prerequisite are there and assign the result in the proper register, removing the instruction from the stack"
+  [instruction stack register]
+  (let [left (rest (first instruction))
+        right (second (first (rest instruction)))
+        method (second (first (filter (fn [[k v]] (= k :method)) left)))
+        values (map #(d7-get-val % register) (filter (fn [[k v]] (not (= k :method))) left))]
+    (if (empty? (filter #(nil? %) values)) [(remove #(= instruction %) stack) (assoc register right (apply (get d7-instruction-list method) values))]  
+        [stack register])))
+
+(defn d7-engine 
+  "Given a file with a list of instruction, parse it and execute it. Will enter in an infinite loop/crash if the stack is never emptied"
+  [file]
+  (loop [stack (into [] (map d7-instruction-parser (split-lines (slurp file)))) index 0 register {}]
+    (let [instruction (get stack index) 
+          [ustack uregister] (d7-exec-instruction instruction stack register)]
+      (if (empty? ustack) uregister
+          (recur (into [] ustack) (if (< (inc index) (count ustack)) (inc index) 0) uregister)))))
+
+;; it works ! only one issue remaining (for the beauty of it) : since it's signed value, there's some nasty negative value. To be perfect, it would need a mechanism to show the correct value !
